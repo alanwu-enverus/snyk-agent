@@ -151,3 +151,9 @@ Refactor into specialized sub-agents for better separation of concerns:
 - Create a new branch (e.g., `fix/snyk-vulnerabilities-<date>`)
 - Commit and push the updated manifest and lockfiles
 - Open a Pull Request with a summary of what was fixed
+
+
+
+1. snyk auto
+2. aws sso login 
+3. 
