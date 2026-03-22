@@ -21,13 +21,16 @@ PROJECTS = [
     # (f"{BASE_PATH}/extraction-rest", PythonAgent()),
 ]
 
+SCAN_OPTIONS = dict(all_projects=True, detection_depth=10, dev=True)
+
+
 async def main():
     for project_path, agent in PROJECTS:
         project_dir = os.path.abspath(project_path)
         if not os.path.isdir(project_dir):
             print(f"Skipping '{project_dir}': not a valid directory.")
             continue
-        await agent.run(project_dir)
+        await agent.run(project_dir, **SCAN_OPTIONS)
         os.system(f'open -a "IntelliJ IDEA" "{project_dir}"')
 
 

@@ -15,7 +15,8 @@ COMMON_SYSTEM_PROMPT = """You are a security engineer using Snyk to find and fix
 Your task:
 1. Use ONLY the Snyk open source (SCA) scanning tool — do NOT run code analysis, container,
    infrastructure-as-code, or any other scan type.
-2. Scan the project by passing the project root directory directly to snyk_sca_scan.
+2. Scan the project by calling snyk_sca_scan with the path and any scan options provided in the
+   user message (e.g. all_projects, detection_depth, dev). Pass them as-is to the tool.
 3. For each vulnerability found:
    - FIX it if severity is CRITICAL or HIGH by using set_dependency_version to update
      ONLY the affected package version in the manifest file.
@@ -27,7 +28,7 @@ Your task:
    - IMPORTANT: Lock files must be regenerated after updating any manifest, because Snyk
      scans the LOCK FILE for actual resolved versions — editing only the manifest has no effect.
 4. After all fixes, re-scan the project to confirm critical/high issues are resolved.
-5. Provide a summary: what was fixed, what was skipped, what was re-scan result and any remaining issues."""
+5. Provide a summary: what was fixed, what was skipped, re-scan result, and any remaining issues."""
 
 
 def snyk_trust_folder(project_dir: str) -> None:
@@ -67,7 +68,11 @@ class _BaseSnykAgent:
         snyk_server = MCPServerStdio(
             "snyk",
             args=["mcp", "-t", "stdio"],
-            env={**os.environ, "SNYK_TOKEN": os.getenv("SNYK_TOKEN", "")},
+            env={
+                **os.environ,
+                "SNYK_TOKEN": os.getenv("SNYK_TOKEN", ""),
+                "ARTIFACTORY_TOKEN": os.getenv("ARTIFACTORY_TOKEN", ""),
+            },
             timeout=60,
         )
         model = BedrockConverseModel(
@@ -88,16 +93,36 @@ class _BaseSnykAgent:
         """Subclasses register their language-specific tools here."""
         pass
 
-    async def run(self, project_dir: str) -> None:
+    async def run(
+        self,
+        project_dir: str,
+        all_projects: bool = False,
+        detection_depth: int | None = None,
+        dev: bool = False,
+    ) -> None:
         snyk_trust_folder(project_dir)
         print(f"\nScanning project: {project_dir}")
         print(
             "Open source scan only — fixing CRITICAL and HIGH, skipping MEDIUM and LOW...\n"
         )
 
+        options: dict = {}
+        if all_projects:
+            options["all_projects"] = True
+        if detection_depth is not None:
+            options["detection_depth"] = detection_depth
+        if dev:
+            options["dev"] = True
+
+        if options:
+            options_str = ", ".join(f"{k}={v}" for k, v in options.items())
+            prompt = f"Scan and fix the project at '{project_dir}' using scan options: {options_str}."
+        else:
+            prompt = f"Scan and fix the project at '{project_dir}'."
+
         async with self.agent:
             result = await self.agent.run(
-                f"Scan and fix the project at '{project_dir}'.",
+                prompt,
                 usage_limits=UsageLimits(request_limit=200),
             )
 
