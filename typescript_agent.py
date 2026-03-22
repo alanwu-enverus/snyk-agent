@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -10,8 +11,15 @@ Ecosystem: TypeScript / Node.js (npm)
 Manifest file: package.json
 Lock file: package-lock.json
 
+Sub-project discovery:
+- Call find_manifest_files(project_dir) first to discover ALL package.json files,
+  including sub-projects (e.g. projects/agent-chatbot/package.json).
+- Scan and fix EACH package.json independently using snyk_sca_scan.
+- When regenerating the lock file for a sub-project, pass its directory
+  (not the root) to run_command: run_command('npm install', sub_project_dir)
+
 Lock file regeneration:
-- After updating package.json, run: run_command('npm install', project_dir)
+- After updating package.json, run: run_command('npm install', <manifest_dir>)
 
 npm conflict handling:
 - If 'npm install' fails with a peer dependency conflict, NEVER retry with --force.
@@ -34,7 +42,9 @@ Validation after fixes:
 - Include lint and test results in the final summary."""
 
 
-def set_dependency_version(manifest_path: str, package_name: str, new_version: str) -> str:
+def set_dependency_version(
+    manifest_path: str, package_name: str, new_version: str
+) -> str:
     """Safely update a single dependency version in package.json.
 
     new_version e.g. "^19.2.19"
@@ -51,7 +61,12 @@ def set_dependency_version(manifest_path: str, package_name: str, new_version: s
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         updated_direct = False
-        for section in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"):
+        for section in (
+            "dependencies",
+            "devDependencies",
+            "peerDependencies",
+            "optionalDependencies",
+        ):
             if section in data and package_name in data[section]:
                 data[section][package_name] = new_version
                 updated_direct = True
@@ -93,7 +108,9 @@ def cleanup_overrides(manifest_path: str) -> str:
         if not overrides:
             return "No overrides section found — nothing to clean up."
 
-        direct = set(data.get("dependencies", {})) | set(data.get("devDependencies", {}))
+        direct = set(data.get("dependencies", {})) | set(
+            data.get("devDependencies", {})
+        )
         stale = [pkg for pkg in overrides if pkg in direct]
         for pkg in stale:
             del data["overrides"][pkg]
@@ -121,10 +138,14 @@ def run_command(command: str, cwd: str) -> str:
     if not re.match(r"^npm\s+", command.strip()):
         return "Error: only 'npm' commands are permitted."
     try:
+        env = {**os.environ}
+        if token := os.getenv("ARTIFACTORY_TOKEN"):
+            env["ARTIFACTORY_TOKEN"] = token
         result = subprocess.run(
             command,
             shell=True,
             cwd=cwd,
+            env=env,
             capture_output=True,
             text=True,
             timeout=300,
@@ -138,16 +159,19 @@ def run_command(command: str, cwd: str) -> str:
 
 
 def find_manifest_files(project_dir: str) -> str:
-    """List npm manifest and lock files in the project root directory (non-recursive).
+    """Recursively find all package.json and package-lock.json files under project_dir.
 
-    Detects: package.json, package-lock.json
+    Skips node_modules directories. Returns one file path per line.
+    Use this to discover sub-projects (e.g. projects/agent-chatbot/package.json).
     """
-    targets = {"package.json", "package-lock.json"}
     try:
         root = Path(project_dir)
-        found = [
-            str(root / name) for name in sorted(targets) if (root / name).exists()
-        ]
+        found = sorted(
+            str(p)
+            for p in root.rglob("package*.json")
+            if "node_modules" not in p.parts
+            and p.name in {"package.json", "package-lock.json"}
+        )
         return "\n".join(found) if found else "No npm manifest files found."
     except Exception as e:
         return f"Error reading project directory: {e}"

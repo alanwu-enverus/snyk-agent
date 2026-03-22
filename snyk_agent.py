@@ -27,7 +27,7 @@ Your task:
    - IMPORTANT: Lock files must be regenerated after updating any manifest, because Snyk
      scans the LOCK FILE for actual resolved versions — editing only the manifest has no effect.
 4. After all fixes, re-scan the project to confirm critical/high issues are resolved.
-5. Provide a summary: what was fixed, what was skipped, and any remaining issues."""
+5. Provide a summary: what was fixed, what was skipped, what was re-scan result and any remaining issues."""
 
 
 def snyk_trust_folder(project_dir: str) -> None:
