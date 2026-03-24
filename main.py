@@ -27,8 +27,8 @@ PROJECTS = [
     # (f"{BASE_PATH}/ba-oi-eslint-plugin", TypeScriptAgent()),
     # (f"{BASE_PATH}/invoice-app", TypeScriptAgent()),
     # (f"{BASE_PATH}/report-app", TypeScriptAgent()),
-    (f"{BASE_PATH}/extraction-rest", PythonAgent()),
-    # (f"{BASE_PATH}/report-rest", PythonAgent()),
+    # (f"{BASE_PATH}/extraction-rest", PythonAgent()),
+    (f"{BASE_PATH}/report-rest", PythonAgent()),
     # (f"{BASE_PATH}/sentry-rest", PythonAgent()),
 ]
 
@@ -48,7 +48,6 @@ async def main():
         
         elapsed = time.time() - start
         print(f"[{os.path.basename(project_dir)}] completed in {elapsed:.1f}s")
-        os.system(f'open -a "IntelliJ IDEA" "{project_dir}"')
     total_elapsed = time.time() - total_start
     print(f"\nTotal time: {total_elapsed:.1f}s")
 
