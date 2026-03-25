@@ -154,6 +154,10 @@ Refactor into specialized sub-agents for better separation of concerns:
 
 
 
-1. snyk auto
-2. aws sso login 
-3. 
+1. snyk cli must be install
+2. snyk must be version high than ? 
+3. snyk auth and get token to set at .env
+4. to view pydantic ai firelog, need to register account. it is free
+5. aws access token and aws sso login 
+6. the scanning project must run install dependencies before run this app
+7. uv run main.py
