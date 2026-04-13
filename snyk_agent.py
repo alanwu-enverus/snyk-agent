@@ -28,7 +28,31 @@ Your task:
    - IMPORTANT: Lock files must be regenerated after updating any manifest, because Snyk
      scans the LOCK FILE for actual resolved versions — editing only the manifest has no effect.
 4. After all fixes, re-scan the project to confirm critical/high issues are resolved.
-5. Provide a summary: what was fixed, what was skipped, re-scan result, and any remaining issues."""
+5. Provide a summary: what was fixed, what was skipped, re-scan result, and any remaining issues.
+
+IMPORTANT: When reporting scan results, be concise. List only: package name, installed version,
+fix version, and severity. Do NOT reproduce full vulnerability descriptions or raw JSON."""
+
+_SCAN_PROMPT_SUFFIX = (
+    " Return ONLY a concise table of CRITICAL and HIGH vulnerabilities: "
+    "package name | installed version | fix version | severity. "
+    "If there are none, say 'No CRITICAL or HIGH vulnerabilities found.'"
+)
+
+_FIX_PROMPT_TEMPLATE = """\
+Fix the following CRITICAL and HIGH vulnerabilities in '{project_dir}'.
+
+{vuln_summary}
+
+For each vulnerability: use set_dependency_version to update the manifest, then regenerate \
+the lock file. MEDIUM and LOW issues should be skipped.
+When done, report what was fixed and what (if anything) could not be fixed.\
+"""
+
+_VERIFY_PROMPT_TEMPLATE = (
+    "Re-scan the project at '{project_dir}'{options_str} to verify all CRITICAL and HIGH "
+    "vulnerabilities have been resolved. Report the result."
+)
 
 
 def snyk_trust_folder(project_dir: str) -> None:
@@ -114,16 +138,52 @@ class _BaseSnykAgent:
         if dev:
             options["dev"] = True
 
-        if options:
-            options_str = ", ".join(f"{k}={v}" for k, v in options.items())
-            prompt = f"Scan and fix the project at '{project_dir}' using scan options: {options_str}."
-        else:
-            prompt = f"Scan and fix the project at '{project_dir}'."
+        options_str = (
+            " using scan options: " + ", ".join(f"{k}={v}" for k, v in options.items())
+            if options
+            else ""
+        )
 
+        # Phase 1: Scan — ask for a compact summary to keep context small.
+        scan_prompt = (
+            f"Scan the project at '{project_dir}'{options_str}."
+            + _SCAN_PROMPT_SUFFIX
+        )
         async with self.agent:
-            result = await self.agent.run(
-                prompt,
+            scan_result = await self.agent.run(
+                scan_prompt,
+                usage_limits=UsageLimits(request_limit=20),
+            )
+
+        vuln_summary = scan_result.output
+        print(f"[Scan complete]\n{vuln_summary}\n")
+
+        if "no critical or high" in vuln_summary.lower():
+            print("No CRITICAL or HIGH vulnerabilities — nothing to fix.")
+            return
+
+        # Phase 2: Fix — fresh context; pass only the compact summary, not the full history.
+        fix_prompt = _FIX_PROMPT_TEMPLATE.format(
+            project_dir=project_dir,
+            vuln_summary=vuln_summary,
+        )
+        async with self.agent:
+            fix_result = await self.agent.run(
+                fix_prompt,
+                usage_limits=UsageLimits(request_limit=150),
+            )
+
+        print(f"[Fix complete]\n{fix_result.output}\n")
+
+        # Phase 3: Verify — fresh context to confirm fixes.
+        verify_prompt = _VERIFY_PROMPT_TEMPLATE.format(
+            project_dir=project_dir,
+            options_str=options_str,
+        )
+        async with self.agent:
+            verify_result = await self.agent.run(
+                verify_prompt,
                 usage_limits=UsageLimits(request_limit=200),
             )
 
-        print(result.output)
+        print(f"[Verify complete]\n{verify_result.output}")
